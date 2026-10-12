@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>MotoFlash • Controle de Corridas</title>
+
+<!-- ============================================================= -->
+<!--  CONFIGURAÇÃO DO FIREBASE (opcional)                          -->
+<!--  Cole AQUI os dados do seu projeto Firebase Realtime Database -->
+<!--  Se deixar em branco, o app funciona 100% local no aparelho.  -->
+<!--  Proteja seu banco pelas REGRAS de segurança do Firebase.     -->
+<!-- ============================================================= -->
+<script>
+  window.FIREBASE_CONFIG = {
+    apiKey: "",
+    authDomain: "",
+    databaseURL: "",
+    projectId: "",
+    storageBucket: "",
+    messagingSenderId: "",
+    appId: ""
+  };
+</script>
+
+<!-- Bibliotecas externas (CDN) -->
+<script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+  :root{
+    --amarelo:#FFC400;
+    --amarelo-esc:#E0A800;
+    --preto:#0d0d0f;
+    --preto2:#17171b;
+    --preto3:#1f1f25;
+    --cinza:#8a8a94;
+    --branco:#f4f4f6;
+    --verde:#27c08a;
+    --vermelho:#ff5d5d;
+    --borda:#2b2b33;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;
+    background:var(--preto);
+    color:var(--branco);
+    min-height:100vh;
+    overflow-x:hidden;
+  }
+  button{font-family:inherit;cursor:pointer;border:none;}
+  input,select{font-family:inherit;}
+
+  /* ===================== SPLASH ===================== */
+  #splash{
+    position:fixed;inset:0;z-index:100;
+    background:radial-gradient(circle at 50% 35%, #26261c 0%, #0d0d0f 70%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    transition:opacity .6s ease;
+  }
+  #splash.hide{opacity:0;pointer-events:none;}
+  .splash-svg{width:160px;height:160px;animation:zoomIn .8s ease;}
+  @keyframes zoomIn{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+  .splash-title{
+    margin-top:18px;font-size:34px;font-weight:800;letter-spacing:2px;
+    color:var(--amarelo);text-transform:uppercase;animation:fadeUp .9s ease .2s both;
+  }
+  .splash-sub{color:var(--cinza);letter-spacing:3px;font-size:13px;margin-top:4px;animation:fadeUp .9s ease .4s both;}
+  @keyframes fadeUp{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}
+  .road{position:absolute;bottom:0;left:0;right:0;height:70px;background:var(--preto2);overflow:hidden;}
+  .road::before{content:"";position:absolute;top:33px;left:0;width:200%;height:5px;
+    background:repeating-linear-gradient(90deg,var(--amarelo) 0 40px,transparent 40px 80px);
+    animation:dash 1s linear infinite;}
+  @keyframes dash{to{transform:translateX(-80px)}}
+  .wheel-spin{transform-origin:center;animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ===================== LOGIN ===================== */
+  #login{position:fixed;inset:0;z-index:90;display:none;flex-direction:column;
+    align-items:center;justify-content:center;padding:24px;
+    background:radial-gradient(circle at 50% 20%, #23230f 0%, var(--preto) 65%);}
+  .login-card{width:100%;max-width:360px;text-align:center;}
+  .login-helmet{width:84px;height:84px;margin:0 auto 10px;}
+  .login-card h1{font-size:26px;margin:4px 0;color:var(--amarelo);letter-spacing:1px;}
+  .login-card p{color:var(--cinza);margin:0 0 26px;font-size:14px;}
+  .pwd-wrap{position:relative;}
+  .pwd-wrap input{
+    width:100%;padding:16px 18px;border-radius:14px;background:var(--preto3);
+    border:2px solid var(--borda);color:var(--branco);font-size:17px;outline:none;text-align:center;letter-spacing:2px;
+    transition:border-color .2s;
+  }
+  .pwd-wrap input:focus{border-color:var(--amarelo);}
+  .btn-primary{
+    width:100%;margin-top:16px;padding:16px;border-radius:14px;font-size:17px;font-weight:700;
+    background:var(--amarelo);color:#1a1a1a;transition:transform .12s, box-shadow .2s;
+    box-shadow:0 8px 24px -8px var(--amarelo-esc);
+  }
+  .btn-primary:active{transform:scale(.97);}
+  .login-err{color:var(--vermelho);font-size:14px;margin-top:14px;min-height:18px;}
+
+  /* ===================== APP ===================== */
+  #app{display:none;max-width:520px;margin:0 auto;padding:0 16px 120px;}
+  .topbar{
+    position:sticky;top:0;z-index:40;background:rgba(13,13,15,.92);backdrop-filter:blur(10px);
+    display:flex;align-items:center;justify-content:space-between;padding:16px 4px 12px;border-bottom:1px solid var(--borda);
+  }
+  .topbar .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;color:var(--amarelo);letter-spacing:.5px;}
+  .cloud-dot{font-size:11px;color:var(--cinza);display:flex;align-items:center;gap:5px;font-weight:500;}
+  .cloud-dot .dot{width:8px;height:8px;border-radius:50%;background:var(--cinza);}
+  .cloud-dot.on .dot{background:var(--verde);box-shadow:0 0 8px var(--verde);}
+
+  .section{background:var(--preto2);border:1px solid var(--borda);border-radius:18px;padding:18px;margin-top:18px;animation:cardIn .4s ease both;}
+  @keyframes cardIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  .section h2{margin:0 0 14px;font-size:15px;text-transform:uppercase;letter-spacing:1.5px;color:var(--amarelo);display:flex;align-items:center;gap:8px;}
+
+  .quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+  .quick-btn{
+    padding:16px 6px;border-radius:14px;background:var(--preto3);border:2px solid var(--borda);
+    color:var(--branco);font-size:16px;font-weight:700;transition:transform .12s,border-color .2s,background .2s;
+  }
+  .quick-btn:active{transform:scale(.95);}
+  .quick-btn.sel{border-color:var(--amarelo);background:#2a2611;color:var(--amarelo);}
+
+  .field{margin-top:14px;}
+  .field label{display:block;font-size:12px;color:var(--cinza);margin-bottom:6px;letter-spacing:.5px;text-transform:uppercase;}
+  .money-input{display:flex;align-items:center;background:var(--preto3);border:2px solid var(--borda);border-radius:14px;padding:0 16px;transition:border-color .2s;}
+  .money-input:focus-within{border-color:var(--amarelo);}
+  .money-input span{color:var(--amarelo);font-weight:700;font-size:18px;}
+  .money-input input{flex:1;background:transparent;border:none;outline:none;color:var(--branco);font-size:22px;font-weight:700;padding:14px 8px;}
+  .txt-input{width:100%;background:var(--preto3);border:2px solid var(--borda);border-radius:14px;padding:14px 16px;color:var(--branco);font-size:16px;outline:none;transition:border-color .2s;}
+  .txt-input:focus{border-color:var(--amarelo);}
+
+  .toggle-row{display:flex;gap:10px;margin-top:14px;}
+  .toggle-btn{flex:1;padding:13px;border-radius:12px;background:var(--preto3);border:2px solid var(--borda);color:var(--cinza);font-weight:700;font-size:14px;transition:.2s;}
+  .toggle-btn.sel{border-color:var(--amarelo);background:#2a2611;color:var(--amarelo);}
+  .toggle-btn.fiado.sel{border-color:var(--vermelho);background:#2a1414;color:var(--vermelho);}
+
+  .btn-register{width:100%;margin-top:18px;padding:17px;border-radius:14px;font-size:17px;font-weight:800;background:var(--amarelo);color:#1a1a1a;transition:transform .12s;box-shadow:0 8px 22px -10px var(--amarelo-esc);letter-spacing:.5px;}
+  .btn-register:active{transform:scale(.97);}
+
+  /* resumo do dia */
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .stat{background:var(--preto3);border:1px solid var(--borda);border-radius:14px;padding:14px;}
+  .stat .n{font-size:26px;font-weight:800;color:var(--amarelo);}
+  .stat .l{font-size:12px;color:var(--cinza);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
+
+  /* lista corridas */
+  .ride-row{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--borda);}
+  .ride-row:last-child{border-bottom:none;}
+  .ride-ic{width:38px;height:38px;border-radius:10px;background:var(--preto3);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .ride-info{flex:1;min-width:0;}
+  .ride-info .v{font-weight:800;font-size:17px;}
+  .ride-info .t{font-size:12px;color:var(--cinza);}
+  .badge-fiado{font-size:10px;background:#3a1a1a;color:var(--vermelho);padding:2px 7px;border-radius:20px;font-weight:700;margin-left:6px;vertical-align:middle;}
+  .ride-act{display:flex;gap:6px;}
+  .icon-btn{width:34px;height:34px;border-radius:9px;background:var(--preto3);border:1px solid var(--borda);display:flex;align-items:center;justify-content:center;transition:.15s;}
+  .icon-btn:active{transform:scale(.9);}
+  .empty{text-align:center;color:var(--cinza);padding:22px 0;font-size:14px;}
+
+  /* fiado cliente */
+  .client-row{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--borda);cursor:pointer;}
+  .client-row:last-child{border-bottom:none;}
+  .client-av{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--amarelo),var(--amarelo-esc));color:#1a1a1a;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;flex-shrink:0;}
+  .client-info{flex:1;min-width:0;}
+  .client-info .nm{font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .client-info .sub{font-size:12px;color:var(--cinza);}
+  .client-total{font-weight:800;color:var(--vermelho);font-size:16px;text-align:right;}
+  .atraso-pill{display:inline-block;margin-top:3px;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:700;}
+  .atraso-ok{background:#143a2a;color:var(--verde);}
+  .atraso-bad{background:#3a1a1a;color:var(--vermelho);}
+
+  /* relatorio */
+  .rep-presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+  .preset-btn{padding:9px 14px;border-radius:20px;background:var(--preto3);border:1px solid var(--borda);color:var(--cinza);font-size:13px;font-weight:600;transition:.2s;}
+  .preset-btn.sel{background:var(--amarelo);color:#1a1a1a;border-color:var(--amarelo);}
+  .date-row{display:flex;gap:10px;}
+  .date-row .field{flex:1;margin-top:0;}
+  input[type=date]{width:100%;background:var(--preto3);border:2px solid var(--borda);border-radius:12px;padding:12px;color:var(--branco);font-size:14px;outline:none;color-scheme:dark;}
+  input[type=date]:focus{border-color:var(--amarelo);}
+  .btn-pdf{width:100%;margin-top:16px;padding:16px;border-radius:14px;font-weight:800;font-size:16px;background:linear-gradient(135deg,#ff5d5d,#d13a3a);color:#fff;display:flex;align-items:center;justify-content:center;gap:10px;transition:transform .12s;}
+  .btn-pdf:active{transform:scale(.97);}
+  .rep-preview{margin-top:16px;background:var(--preto3);border:1px solid var(--borda);border-radius:14px;padding:16px;}
+  .rep-line{display:flex;justify-content:space-between;padding:7px 0;font-size:15px;}
+  .rep-line.big{font-size:19px;font-weight:800;color:var(--amarelo);border-top:1px dashed var(--borda);margin-top:6px;padding-top:12px;}
+
+  /* nav */
+  .navbar{position:fixed;bottom:0;left:0;right:0;z-index:50;display:flex;max-width:520px;margin:0 auto;
+    background:rgba(20,20,24,.96);backdrop-filter:blur(12px);border-top:1px solid var(--borda);}
+  .nav-item{flex:1;padding:12px 0 16px;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--cinza);font-size:11px;font-weight:600;transition:.2s;background:transparent;}
+  .nav-item.sel{color:var(--amarelo);}
+  .nav-item svg{width:24px;height:24px;}
+
+  .tab{display:none;}
+  .tab.show{display:block;}
+
+  /* modal */
+  .modal-bg{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.72);display:none;align-items:flex-end;justify-content:center;animation:fadeBg .25s ease;}
+  .modal-bg.show{display:flex;}
+  @keyframes fadeBg{from{opacity:0}to{opacity:1}}
+  .modal{width:100%;max-width:520px;background:var(--preto2);border:1px solid var(--borda);border-radius:22px 22px 0 0;padding:22px;animation:slideUp .3s ease;}
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .modal h3{margin:0 0 4px;font-size:20px;}
+  .modal .msub{color:var(--cinza);font-size:13px;margin-bottom:18px;}
+  .modal-fiado-item{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--borda);font-size:14px;}
+  .modal-fiado-item:last-child{border-bottom:none;}
+  .modal-actions{display:flex;gap:10px;margin-top:20px;}
+  .btn-ghost{flex:1;padding:14px;border-radius:12px;background:var(--preto3);border:1px solid var(--borda);color:var(--branco);font-weight:700;}
+  .btn-pay{flex:1;padding:14px;border-radius:12px;background:var(--verde);color:#06241a;font-weight:800;}
+
+  .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);z-index:120;
+    background:var(--amarelo);color:#1a1a1a;padding:13px 22px;border-radius:30px;font-weight:700;font-size:14px;
+    opacity:0;transition:.3s;pointer-events:none;box-shadow:0 10px 30px -8px rgba(0,0,0,.6);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<!-- ===================== SPLASH ===================== -->
+<div id="splash">
+  <svg class="splash-svg" viewBox="0 0 120 120" fill="none">
+    <!-- moto -->
+    <circle class="wheel-spin" cx="30" cy="88" r="16" stroke="#FFC400" stroke-width="4"/>
+    <circle cx="30" cy="88" r="3" fill="#FFC400"/>
+    <circle class="wheel-spin" cx="92" cy="88" r="16" stroke="#FFC400" stroke-width="4"/>
+    <circle cx="92" cy="88" r="3" fill="#FFC400"/>
+    <path d="M30 88 L55 88 L66 66 L84 66 M92 88 L74 66 M46 66 L70 66" stroke="#f4f4f6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M44 66 Q40 56 50 56 L58 56" stroke="#FFC400" stroke-width="4" stroke-linecap="round"/>
+    <!-- piloto capacete -->
+    <circle cx="66" cy="44" r="12" fill="#FFC400"/>
+    <path d="M58 46 a8 8 0 0 1 16 0 Z" fill="#17171b"/>
+    <path d="M66 56 L60 88 M66 60 L80 72" stroke="#f4f4f6" stroke-width="5" stroke-linecap="round"/>
+  </svg>
+  <div class="splash-title">MotoFlash</div>
+  <div class="splash-sub">CONTROLE DE CORRIDAS</div>
+  <div class="road"></div>
+</div>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="login">
+  <div class="login-card">
+    <svg class="login-helmet" viewBox="0 0 100 100" fill="none">
+      <path d="M50 14 C26 14 14 32 14 52 L14 62 C14 66 17 68 21 68 L30 68 L30 60 C30 44 38 38 50 38 C62 38 70 44 70 60 L70 68 L79 68 C83 68 86 66 86 62 L86 52 C86 32 74 14 50 14Z" fill="#FFC400"/>
+      <rect x="30" y="56" width="52" height="16" rx="8" fill="#17171b"/>
+      <path d="M30 64 L82 64" stroke="#FFC400" stroke-width="2"/>
+    </svg>
+    <h1>Acesso Restrito</h1>
+    <p>Digite a senha para entrar</p>
+    <div class="pwd-wrap">
+      <input id="pwd" type="password" placeholder="••••••••" autocomplete="off" />
+    </div>
+    <button class="btn-primary" id="btnLogin">ENTRAR</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app">
+  <div class="topbar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="18" r="3" stroke="#FFC400" stroke-width="2"/><circle cx="19" cy="18" r="3" stroke="#FFC400" stroke-width="2"/><path d="M5 18h7l3-6M15 12l-3 0M14 9h4l2 3" stroke="#f4f4f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      MotoFlash
+    </div>
+    <div class="cloud-dot" id="cloudDot"><span class="dot"></span><span id="cloudTxt">Local</span></div>
+  </div>
+
+  <!-- TAB: NOVA CORRIDA -->
+  <div class="tab show" id="tab-corrida">
+    <div class="section">
+      <h2>💨 Nova Corrida</h2>
+      <div class="quick-grid" id="quickGrid"></div>
+      <div class="field">
+        <label>Valor da corrida</label>
+        <div class="money-input">
+          <span>R$</span>
+          <input id="valorInput" type="number" inputmode="decimal" step="0.01" placeholder="0,00" />
+        </div>
+      </div>
+      <div class="toggle-row">
+        <button class="toggle-btn sel" id="tgPago">💵 Pago</button>
+        <button class="toggle-btn fiado" id="tgFiado">📋 Fiado</button>
+      </div>
+      <div class="field" id="clienteField" style="display:none;">
+        <label>Nome do cliente (fiado)</label>
+        <input id="clienteInput" class="txt-input" type="text" placeholder="Ex: João da Silva" />
+      </div>
+      <button class="btn-register" id="btnRegister">REGISTRAR CORRIDA</button>
+    </div>
+
+    <div class="section">
+      <h2>📊 Resumo de Hoje</h2>
+      <div class="stats">
+        <div class="stat"><div class="n" id="todayCount">0</div><div class="l">Corridas</div></div>
+        <div class="stat"><div class="n" id="todayTotal">R$ 0</div><div class="l">Faturamento</div></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>🕒 Corridas de Hoje</h2>
+      <div id="todayList"></div>
+    </div>
+  </div>
+
+  <!-- TAB: FIADOS -->
+  <div class="tab" id="tab-fiado">
+    <div class="section">
+      <h2>📋 Fretes Fiados em Aberto</h2>
+      <p style="color:var(--cinza);font-size:13px;margin:0 0 10px;">Toque no cliente para ver os dias em atraso.</p>
+      <div id="fiadoList"></div>
+    </div>
+  </div>
+
+  <!-- TAB: RELATÓRIO -->
+  <div class="tab" id="tab-relatorio">
+    <div class="section">
+      <h2>📄 Relatório PDF</h2>
+      <div class="rep-presets">
+        <button class="preset-btn" data-p="hoje">Hoje</button>
+        <button class="preset-btn" data-p="ontem">Ontem</button>
+        <button class="preset-btn sel" data-p="mes">Este mês</button>
+        <button class="preset-btn" data-p="mesant">Mês passado</button>
+      </div>
+      <div class="date-row">
+        <div class="field"><label>Início</label><input type="date" id="repInicio" /></div>
+        <div class="field"><label>Fim</label><input type="date" id="repFim" /></div>
+      </div>
+      <div class="rep-preview" id="repPreview"></div>
+      <button class="btn-pdf" id="btnPdf">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        BAIXAR RELATÓRIO PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- NAV -->
+  <div class="navbar">
+    <button class="nav-item sel" data-tab="corrida">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="5" cy="18" r="2.5" stroke="currentColor" stroke-width="2"/><circle cx="19" cy="18" r="2.5" stroke="currentColor" stroke-width="2"/><path d="M5 18h7l3-6M14 9h4l2 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Corrida
+    </button>
+    <button class="nav-item" data-tab="fiado">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M9 5h6m-6 0a2 2 0 00-2 2v12a2 2 0 002 2h6a2 2 0 002-2V7a2 2 0 00-2-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 11h6M9 15h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Fiados
+    </button>
+    <button class="nav-item" data-tab="relatorio">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13 3v6h6M9 14h6M9 17h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Relatório
+    </button>
+  </div>
+</div>
+
+<!-- MODAL FIADO -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modalFiado"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =======================================================================
+   MotoFlash — lógica do app (single file)
+   Camada de dados: Firebase Realtime DB (se configurado) OU localStorage.
+   ======================================================================= */
+
+const SENHA = "mototaxi";
+const QUICK_VALUES = [5, 7, 10, 15];
+const STORE_KEY = "motoflash_rides_v1";
+
+let rides = [];          // {id, valor, tipo:'pago'|'fiado', cliente, pago:bool, createdAt (ISO)}
+let useFirebase = false;
+let db = null;
+let selectedQuick = null;
+let selectedTipo = "pago";
+
+/* ---------- utilidades ---------- */
+const $ = id => document.getElementById(id);
+const brl = n => "R$ " + Number(n||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const brlShort = n => "R$ " + Number(n||0).toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:0});
+function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),2200);}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function sameDay(a,b){return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();}
+function daysBetween(a,b){return Math.floor((b-a)/(1000*60*60*24));}
+function ymd(d){return d.toISOString().slice(0,10);}
+
+/* ---------- camada de dados ---------- */
+function firebaseConfigured(){
+  const c = window.FIREBASE_CONFIG||{};
+  return c.databaseURL && c.databaseURL.trim().length>0 && c.apiKey && c.apiKey.trim().length>0;
+}
+function initData(){
+  if(firebaseConfigured() && window.firebase){
+    try{
+      firebase.initializeApp(window.FIREBASE_CONFIG);
+      db = firebase.database();
+      useFirebase = true;
+      db.ref("rides").on("value", snap=>{
+        const val = snap.val()||{};
+        rides = Object.keys(val).map(k=>({id:k,...val[k]}));
+        renderAll();
+      });
+      $("cloudDot").classList.add("on");
+      $("cloudTxt").textContent = "Online";
+      return;
+    }catch(e){console.warn("Firebase falhou, usando local:",e);}
+  }
+  // fallback local
+  useFirebase = false;
+  loadLocal();
+  $("cloudTxt").textContent = "Local";
+  renderAll();
+}
+function loadLocal(){try{rides=JSON.parse(localStorage.getItem(STORE_KEY)||"[]");}catch(e){rides=[];}}
+function saveLocal(){localStorage.setItem(STORE_KEY,JSON.stringify(rides));}
+
+function addRide(ride){
+  if(useFirebase){ const ref=db.ref("rides").push(); ref.set(ride); }
+  else{ ride.id=uid(); rides.push(ride); saveLocal(); renderAll(); }
+}
+function updateRide(id,patch){
+  if(useFirebase){ db.ref("rides/"+id).update(patch); }
+  else{ const r=rides.find(x=>x.id===id); if(r){Object.assign(r,patch); saveLocal(); renderAll();} }
+}
+function deleteRide(id){
+  if(useFirebase){ db.ref("rides/"+id).remove(); }
+  else{ rides=rides.filter(x=>x.id!==id); saveLocal(); renderAll(); }
+}
+
+/* ---------- SPLASH + LOGIN ---------- */
+window.addEventListener("load",()=>{
+  setTimeout(()=>{
+    $("splash").classList.add("hide");
+    setTimeout(()=>{ $("splash").style.display="none"; $("login").style.display="flex"; $("pwd").focus(); },600);
+  },2000);
+});
+function doLogin(){
+  const v=$("pwd").value.trim();
+  if(v===SENHA){
+    $("login").style.display="none";
+    $("app").style.display="block";
+    initData();
+    initUI();
+  }else{
+    $("loginErr").textContent="Senha incorreta. Tente novamente.";
+    $("pwd").value="";
+    $("pwd").focus();
+  }
+}
+$("btnLogin").addEventListener("click",doLogin);
+$("pwd").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();});
+
+/* ---------- UI: quick buttons / toggles / nav ---------- */
+function initUI(){
+  // quick values
+  const grid=$("quickGrid");
+  grid.innerHTML="";
+  QUICK_VALUES.forEach(v=>{
+    const b=document.createElement("button");
+    b.className="quick-btn"; b.textContent="R$ "+v;
+    b.addEventListener("click",()=>{
+      selectedQuick=v; $("valorInput").value=v.toFixed(2);
+      [...grid.children].forEach(c=>c.classList.remove("sel")); b.classList.add("sel");
+    });
+    grid.appendChild(b);
+  });
+  $("valorInput").addEventListener("input",()=>{[...grid.children].forEach(c=>c.classList.remove("sel"));selectedQuick=null;});
+
+  // toggle pago/fiado
+  $("tgPago").addEventListener("click",()=>setTipo("pago"));
+  $("tgFiado").addEventListener("click",()=>setTipo("fiado"));
+
+  // register
+  $("btnRegister").addEventListener("click",registrar);
+
+  // nav
+  document.querySelectorAll(".nav-item").forEach(n=>{
+    n.addEventListener("click",()=>{
+      document.querySelectorAll(".nav-item").forEach(x=>x.classList.remove("sel"));
+      n.classList.add("sel");
+      document.querySelectorAll(".tab").forEach(t=>t.classList.remove("show"));
+      $("tab-"+n.dataset.tab).classList.add("show");
+      if(n.dataset.tab==="relatorio") updateRepPreview();
+    });
+  });
+
+  // relatorio presets
+  document.querySelectorAll(".preset-btn").forEach(p=>{
+    p.addEventListener("click",()=>{
+      document.querySelectorAll(".preset-btn").forEach(x=>x.classList.remove("sel"));
+      p.classList.add("sel"); applyPreset(p.dataset.p); updateRepPreview();
+    });
+  });
+  $("repInicio").addEventListener("change",()=>{clearPresets();updateRepPreview();});
+  $("repFim").addEventListener("change",()=>{clearPresets();updateRepPreview();});
+  applyPreset("mes");
+  $("btnPdf").addEventListener("click",gerarPDF);
+
+  // modal close
+  $("modalBg").addEventListener("click",e=>{if(e.target===$("modalBg"))closeModal();});
+}
+function setTipo(t){
+  selectedTipo=t;
+  $("tgPago").classList.toggle("sel",t==="pago");
+  $("tgFiado").classList.toggle("sel",t==="fiado");
+  $("clienteField").style.display = t==="fiado"?"block":"none";
+}
+
+/* ---------- registrar corrida ---------- */
+function registrar(){
+  const valor=parseFloat($("valorInput").value);
+  if(!valor||valor<=0){toast("Informe um valor válido");return;}
+  let cliente="";
+  if(selectedTipo==="fiado"){
+    cliente=$("clienteInput").value.trim();
+    if(!cliente){toast("Informe o nome do cliente");return;}
+  }
+  addRide({
+    valor:Number(valor.toFixed(2)),
+    tipo:selectedTipo,
+    cliente:cliente,
+    pago:selectedTipo==="pago",
+    createdAt:new Date().toISOString()
+  });
+  // reset
+  $("valorInput").value="";
+  $("clienteInput").value="";
+  selectedQuick=null;
+  [...$("quickGrid").children].forEach(c=>c.classList.remove("sel"));
+  setTipo("pago");
+  toast(selectedTipo==="fiado"?"Fiado registrado! 📋":"Corrida registrada! ✅");
+}
+
+/* ---------- render ---------- */
+function renderAll(){ renderToday(); renderFiado(); updateRepPreview(); }
+
+function renderToday(){
+  const hoje=new Date();
+  const today=rides.filter(r=>sameDay(new Date(r.createdAt),hoje))
+                   .sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const total=today.reduce((s,r)=>s+r.valor,0);
+  $("todayCount").textContent=today.length;
+  $("todayTotal").textContent=brlShort(total);
+  const list=$("todayList");
+  if(!today.length){list.innerHTML='<div class="empty">Nenhuma corrida registrada hoje.</div>';return;}
+  list.innerHTML="";
+  today.forEach(r=>{
+    const hora=new Date(r.createdAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+    const row=document.createElement("div");row.className="ride-row";
+    row.innerHTML=`
+      <div class="ride-ic">${r.tipo==="fiado"?"📋":"💵"}</div>
+      <div class="ride-info">
+        <div class="v">${brl(r.valor)}${r.tipo==="fiado"?'<span class="badge-fiado">FIADO'+(r.pago?' • PAGO':'')+'</span>':''}</div>
+        <div class="t">${hora}${r.cliente?" • "+r.cliente:""}</div>
+      </div>
+      <div class="ride-act">
+        <button class="icon-btn" title="Editar">✏️</button>
+        <button class="icon-btn" title="Excluir">🗑️</button>
+      </div>`;
+    row.querySelector('[title="Editar"]').addEventListener("click",()=>editarValor(r));
+    row.querySelector('[title="Excluir"]').addEventListener("click",()=>{if(confirm("Excluir esta corrida?"))deleteRide(r.id);});
+    list.appendChild(row);
+  });
+}
+
+function editarValor(r){
+  const novo=prompt("Editar valor da corrida (R$):",r.valor);
+  if(novo===null)return;
+  const v=parseFloat(String(novo).replace(",","."));
+  if(!v||v<=0){toast("Valor inválido");return;}
+  updateRide(r.id,{valor:Number(v.toFixed(2))});
+  toast("Valor atualizado ✏️");
+}
+
+/* ---------- fiados ---------- */
+function getFiadoClients(){
+  const open=rides.filter(r=>r.tipo==="fiado"&&!r.pago);
+  const map={};
+  open.forEach(r=>{
+    const key=r.cliente||"Sem nome";
+    if(!map[key])map[key]={nome:key,total:0,rides:[],oldest:new Date(r.createdAt)};
+    map[key].total+=r.valor;
+    map[key].rides.push(r);
+    const d=new Date(r.createdAt);
+    if(d<map[key].oldest)map[key].oldest=d;
+  });
+  return Object.values(map).sort((a,b)=>a.oldest-b.oldest);
+}
+function renderFiado(){
+  const clients=getFiadoClients();
+  const list=$("fiadoList");
+  if(!clients.length){list.innerHTML='<div class="empty">Nenhum frete fiado em aberto. 🎉</div>';return;}
+  list.innerHTML="";
+  clients.forEach(c=>{
+    const dias=daysBetween(c.oldest,new Date());
+    const row=document.createElement("div");row.className="client-row";
+    row.innerHTML=`
+      <div class="client-av">${c.nome.charAt(0).toUpperCase()}</div>
+      <div class="client-info">
+        <div class="nm">${c.nome}</div>
+        <div class="sub">${c.rides.length} frete(s) em aberto</div>
+        <span class="atraso-pill ${dias>0?'atraso-bad':'atraso-ok'}">${dias>0?dias+' dia(s) em atraso':'registrado hoje'}</span>
+      </div>
+      <div class="client-total">${brl(c.total)}</div>`;
+    row.addEventListener("click",()=>openFiadoModal(c));
+    list.appendChild(row);
+  });
+}
+function openFiadoModal(c){
+  const dias=daysBetween(c.oldest,new Date());
+  const m=$("modalFiado");
+  let items=c.rides.sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt)).map(r=>{
+    const d=new Date(r.createdAt);
+    const dd=daysBetween(d,new Date());
+    return `<div class="modal-fiado-item"><span>${d.toLocaleDateString("pt-BR")} • ${brl(r.valor)}</span><span style="color:var(--cinza)">${dd} dia(s)</span></div>`;
+  }).join("");
+  m.innerHTML=`
+    <h3>${c.nome}</h3>
+    <div class="msub">Dívida total: <strong style="color:var(--vermelho)">${brl(c.total)}</strong></div>
+    <div style="background:${dias>0?'#2a1414':'#143a2a'};border-radius:12px;padding:14px;text-align:center;margin-bottom:8px;">
+      <div style="font-size:30px;font-weight:800;color:${dias>0?'var(--vermelho)':'var(--verde)'}">${dias}</div>
+      <div style="font-size:12px;color:var(--cinza);text-transform:uppercase;letter-spacing:1px;">dias em atraso</div>
+    </div>
+    ${items}
+    <div class="modal-actions">
+      <button class="btn-ghost" id="mClose">Fechar</button>
+      <button class="btn-pay" id="mPay">✓ Marcar como pago</button>
+    </div>`;
+  $("mClose").addEventListener("click",closeModal);
+  $("mPay").addEventListener("click",()=>{
+    c.rides.forEach(r=>updateRide(r.id,{pago:true}));
+    closeModal(); toast("Fiado quitado! ✅");
+  });
+  $("modalBg").classList.add("show");
+}
+function closeModal(){$("modalBg").classList.remove("show");}
+
+/* ---------- relatório ---------- */
+function clearPresets(){document.querySelectorAll(".preset-btn").forEach(x=>x.classList.remove("sel"));}
+function applyPreset(p){
+  const hoje=new Date();let ini,fim;
+  if(p==="hoje"){ini=new Date(hoje);fim=new Date(hoje);}
+  else if(p==="ontem"){ini=new Date(hoje);ini.setDate(ini.getDate()-1);fim=new Date(ini);}
+  else if(p==="mes"){ini=new Date(hoje.getFullYear(),hoje.getMonth(),1);fim=new Date(hoje.getFullYear(),hoje.getMonth()+1,0);}
+  else if(p==="mesant"){ini=new Date(hoje.getFullYear(),hoje.getMonth()-1,1);fim=new Date(hoje.getFullYear(),hoje.getMonth(),0);}
+  $("repInicio").value=ymd(ini);$("repFim").value=ymd(fim);
+}
+function getPeriodRides(){
+  const ini=$("repInicio").value, fim=$("repFim").value;
+  if(!ini||!fim)return{rides:[],ini,fim};
+  const d1=new Date(ini+"T00:00:00"), d2=new Date(fim+"T23:59:59");
+  const r=rides.filter(x=>{const d=new Date(x.createdAt);return d>=d1&&d<=d2;});
+  return{rides:r,ini,fim};
+}
+function updateRepPreview(){
+  const {rides:r,ini,fim}=getPeriodRides();
+  const total=r.reduce((s,x)=>s+x.valor,0);
+  const pagos=r.filter(x=>x.tipo==="pago"||x.pago);
+  const fiadosAbertos=r.filter(x=>x.tipo==="fiado"&&!x.pago);
+  const recebido=pagos.reduce((s,x)=>s+x.valor,0);
+  const aberto=fiadosAbertos.reduce((s,x)=>s+x.valor,0);
+  $("repPreview").innerHTML=`
+    <div class="rep-line"><span style="color:var(--cinza)">Período</span><span>${ini?fmtBR(ini):"-"} a ${fim?fmtBR(fim):"-"}</span></div>
+    <div class="rep-line"><span style="color:var(--cinza)">Quantidade de corridas</span><span>${r.length}</span></div>
+    <div class="rep-line"><span style="color:var(--cinza)">Recebido (pago)</span><span style="color:var(--verde)">${brl(recebido)}</span></div>
+    <div class="rep-line"><span style="color:var(--cinza)">Fiado em aberto</span><span style="color:var(--vermelho)">${brl(aberto)}</span></div>
+    <div class="rep-line big"><span>Faturamento total</span><span>${brl(total)}</span></div>`;
+}
+function fmtBR(ymdStr){const[a,m,d]=ymdStr.split("-");return `${d}/${m}/${a}`;}
+
+/* ---------- PDF ---------- */
+function gerarPDF(){
+  const {rides:r,ini,fim}=getPeriodRides();
+  if(!ini||!fim){toast("Selecione o período");return;}
+  const total=r.reduce((s,x)=>s+x.valor,0);
+  const recebido=r.filter(x=>x.tipo==="pago"||x.pago).reduce((s,x)=>s+x.valor,0);
+  const aberto=r.filter(x=>x.tipo==="fiado"&&!x.pago).reduce((s,x)=>s+x.valor,0);
+  const { jsPDF } = window.jspdf;
+  const doc=new jsPDF();
+  // cabeçalho
+  doc.setFillColor(13,13,15);doc.rect(0,0,210,40,"F");
+  doc.setFillColor(255,196,0);doc.circle(22,20,9,"F");
+  doc.setTextColor(13,13,15);doc.setFontSize(14);doc.setFont(undefined,"bold");doc.text("MF",22,23,{align:"center"});
+  doc.setTextColor(255,196,0);doc.setFontSize(22);doc.text("MotoFlash",38,18);
+  doc.setTextColor(200,200,200);doc.setFontSize(11);doc.setFont(undefined,"normal");doc.text("Relatório de Corridas",38,27);
+  // periodo
+  doc.setTextColor(40,40,40);doc.setFontSize(12);doc.setFont(undefined,"bold");
+  doc.text("Período: "+fmtBR(ini)+"  a  "+fmtBR(fim),14,54);
+  doc.setFont(undefined,"normal");doc.setFontSize(10);doc.setTextColor(120,120,120);
+  doc.text("Gerado em "+new Date().toLocaleString("pt-BR"),14,61);
+  // caixas resumo
+  function box(x,label,value,color){
+    doc.setDrawColor(220,220,220);doc.setFillColor(248,248,248);doc.roundedRect(x,72,58,32,3,3,"FD");
+    doc.setTextColor(color[0],color[1],color[2]);doc.setFontSize(18);doc.setFont(undefined,"bold");
+    doc.text(value,x+29,90,{align:"center"});
+    doc.setTextColor(120,120,120);doc.setFontSize(9);doc.setFont(undefined,"normal");
+    doc.text(label,x+29,98,{align:"center"});
+  }
+  box(14,"Qtd. Corridas",String(r.length),[20,20,20]);
+  box(76,"Faturamento Total",brl(total),[200,140,0]);
+  box(138,"Recebido",brl(recebido),[30,160,110]);
+  // detalhe financeiro
+  doc.setDrawColor(230,230,230);doc.line(14,118,196,118);
+  doc.setTextColor(40,40,40);doc.setFontSize(12);doc.setFont(undefined,"bold");doc.text("Resumo Financeiro",14,128);
+  doc.setFont(undefined,"normal");doc.setFontSize(11);doc.setTextColor(60,60,60);
+  let y=140;
+  const lines=[
+    ["Quantidade de corridas:",String(r.length)],
+    ["Faturamento total do período:",brl(total)],
+    ["Total recebido (pago):",brl(recebido)],
+    ["Total fiado em aberto:",brl(aberto)],
+  ];
+  lines.forEach(l=>{doc.text(l[0],14,y);doc.setFont(undefined,"bold");doc.text(l[1],196,y,{align:"right"});doc.setFont(undefined,"normal");y+=10;});
+  // rodapé
+  doc.setFontSize(9);doc.setTextColor(160,160,160);
+  doc.text("MotoFlash • Controle de Corridas de Moto Táxi",105,285,{align:"center"});
+  const nome="Relatorio_MotoFlash_"+ini+"_a_"+fim+".pdf";
+  doc.save(nome);
+  toast("PDF gerado! 📄");
+}
+</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","spa":2}' crossorigin="anonymous"></script>
+</body>
+</html>
